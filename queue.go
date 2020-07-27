@@ -24,7 +24,9 @@ type Queue struct {
 }
 
 func NewQueue(size uint32) *Queue {
-	size = roundUpToPower2(size)
+	if size & (size - 1) > 0 {
+		size = roundupPowOfTwo(size)
+	}
 	q := &Queue{
 		cap:    size,
 		capmod: size - 1,
@@ -193,13 +195,10 @@ func (q *Queue) GetWait(delay ...time.Duration) (interface{}, bool) {
 	
 }
 
-func roundUpToPower2(v uint32) uint32 {
-	v--
-	v |= v >> 1
-	v |= v >> 2
-	v |= v >> 4
-	v |= v >> 8
-	v |= v >> 16
-	v++
-	return v
+func roundupPowOfTwo(x uint32) uint32 {
+	var pos int
+	for i := x; i != 0; pos++ {
+		i >>= 1
+	}
+	return 1 << pos
 }

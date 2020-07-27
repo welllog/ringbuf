@@ -32,14 +32,14 @@ func BenchmarkNewRbQueue(b *testing.B) {
 }
 
 func TestQueue(t *testing.T) {
-	q := NewQueue(10000)
+	q := NewQueue(8)
 
 	var (
 		w    sync.WaitGroup
 		get  uint32
 		put  uint32
 		num  = 10
-		jump = 10000000
+		jump = 100000
 	)
 
 	w.Add(num)

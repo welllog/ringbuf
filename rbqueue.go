@@ -26,7 +26,7 @@ type RbQueue struct {
 }
 
 func NewRbQueue(size uint32) *RbQueue {
-	size = roundUpToPower2(size)
+	size = roundupPowOfTwo(size)
 	q := &RbQueue{
 		cap:    size,
 		capmod: size - 1,
