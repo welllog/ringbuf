@@ -1,22 +1,18 @@
 package ringbuf
 
 import (
-	"runtime"
 	"sync/atomic"
+	"time"
 )
 
 type rbItem struct {
 	value interface{}
-	_ [56]byte
-	tail uint32
-	_ [60]byte
-	head uint32
-	_ [56]byte
+	position uint32
 }
 
 type RbQueue struct {
 	cap uint32
-	capmod uint32
+	mask uint32
 	_ [56]byte
 	head uint32
 	_ [60]byte
@@ -26,78 +22,136 @@ type RbQueue struct {
 }
 
 func NewRbQueue(size uint32) *RbQueue {
-	size = roundupPowOfTwo(size)
+	if size & (size - 1) > 0 {
+		size = roundupPowOfTwo(size)
+	}
 	q := &RbQueue{
 		cap:    size,
-		capmod: size - 1,
+		mask: size - 1,
 		data:   make([]rbItem, size),
 	}
 	for i := range q.data {
-		q.data[i].tail = uint32(i)
-		q.data[i].head = uint32(i)
+		q.data[i].position = uint32(i)
 	}
 	return q
 }
 
+func (q *RbQueue) Cap() uint32 {
+	return q.cap
+}
+
+func (q *RbQueue) Quantity() uint32 {
+	return atomic.LoadUint32(&q.head) - atomic.LoadUint32(&q.tail)
+}
+
+func (q *RbQueue) IsFull() bool {
+	return atomic.LoadUint32(&q.head) - atomic.LoadUint32(&q.tail) == q.cap
+}
+
+func (q *RbQueue) IsEmpty() (b bool) {
+	return atomic.LoadUint32(&q.head) == atomic.LoadUint32(&q.tail)
+}
+
 func (q *RbQueue) Put(val interface{}) bool {
-	var tail, head, index uint32
-	var holder *rbItem
-	head = atomic.LoadUint32(&q.head)
-	tail = atomic.LoadUint32(&q.tail)
-
-	if tail - head >= q.capmod {
+	pos := atomic.LoadUint32(&q.tail)
+	
+	holder := &q.data[pos & q.mask]
+	seq := atomic.LoadUint32(&holder.position)
+	
+	if seq != pos {
 		return false
 	}
-
-	if !atomic.CompareAndSwapUint32(&q.tail, tail, tail + 1) {
+	
+	if !atomic.CompareAndSwapUint32(&q.tail, pos, pos + 1) {
 		return false
 	}
-
-	index = tail & q.capmod
-	holder = &q.data[index]
-
-	for {
-		hd := atomic.LoadUint32(&holder.head)
-		ht := atomic.LoadUint32(&holder.tail)
-
-		if ht == tail && hd == ht {
-			holder.value = val
-			atomic.AddUint32(&holder.tail, q.cap)
-			return true
-		}
-		runtime.Gosched()
-	}
+	
+	holder.value = val
+	atomic.AddUint32(&holder.position, 1)
+	return true
 }
 
 func (q *RbQueue) Get() (interface{}, bool) {
-	var tail, head, index uint32
-	var holder *rbItem
-	tail = atomic.LoadUint32(&q.tail)
-	head = atomic.LoadUint32(&q.head)
-
-	if head == tail { // empty
-		return nil, false
-	} else if head > tail && (tail - head >= q.capmod) {
+	pos := atomic.LoadUint32(&q.head)
+	
+	holder := &q.data[pos & q.mask]
+	seq := atomic.LoadUint32(&holder.position)
+	if seq != pos + 1 {
 		return nil, false
 	}
-
-	if !atomic.CompareAndSwapUint32(&q.head, head, head + 1) {
+	
+	if !atomic.CompareAndSwapUint32(&q.head, pos, pos + 1) {
 		return nil, false
 	}
+	
+	val := holder.value
+	holder.value = nil
+	atomic.AddUint32(&holder.position, q.mask)
+	return val, true
+}
 
-	index = head & q.capmod
-	holder = &q.data[index]
-
+func (q *RbQueue) PutWait(val interface{}, delay ...time.Duration) bool {
+	if q.Put(val) {
+		return true
+	}
+	
+	ticker := time.NewTicker(50 * time.Millisecond)
+	
+	var end time.Time
+	start := time.Now()
+	if len(delay) > 0 {
+		end = start.Add(delay[0])
+	} else {
+		end = start.Add(500 * time.Millisecond)
+	}
+	
 	for {
-		hd := atomic.LoadUint32(&holder.head)
-		ht := atomic.LoadUint32(&holder.tail)
+		now := <- ticker.C
+		
+		if q.Put(val) {
+			ticker.Stop()
+			return true
+		}
+		
+		if now.After(end) {
+			ticker.Stop()
+			return false
+		}
+		
+	}
+	
+}
 
-		if hd == head && (ht - hd) == q.cap {
-			val := holder.value
-			holder.value = nil
-			atomic.AddUint32(&holder.head, q.cap)
+func (q *RbQueue) GetWait(delay ...time.Duration) (interface{}, bool) {
+	val,ok := q.Get()
+	if ok {
+		return val, true
+	}
+	
+	ticker := time.NewTicker(50 * time.Millisecond)
+	
+	var end time.Time
+	start := time.Now()
+	if len(delay) > 0 {
+		end = start.Add(delay[0])
+	} else {
+		end = start.Add(500 * time.Millisecond)
+	}
+	
+	for {
+		now := <- ticker.C
+		
+		val, ok = q.Get()
+		if ok {
+			ticker.Stop()
 			return val, true
 		}
-		runtime.Gosched()
+		
+		if now.After(end) {
+			ticker.Stop()
+			return nil, false
+		}
+		
 	}
+	
 }
