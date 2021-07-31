@@ -104,7 +104,7 @@ func TestQueue(t *testing.T) {
 
 			if head == tail {
 				empty = true
-			} else if (tail + 1) & q.capmod == head {
+			} else if (tail+1)&q.capmod == head {
 				full = true
 			}
 			if tail >= head {
@@ -163,7 +163,7 @@ func TestRepeatQueue(t *testing.T) {
 					}
 					atomic.AddUint32(&put, 1)
 					val++
-					if val >= jump / num * circle {
+					if val >= jump/num*circle {
 						break
 					}
 				}
@@ -187,7 +187,7 @@ func TestRepeatQueue(t *testing.T) {
 					count.Incr(gval)
 					atomic.AddUint32(&get, 1)
 					val++
-					if val == jump / 4 {
+					if val == jump/4 {
 						break
 					}
 				}
@@ -211,7 +211,7 @@ func TestRepeatQueue(t *testing.T) {
 
 			if head == tail {
 				empty = true
-			} else if (tail + 1) & q.capmod == head {
+			} else if (tail+1)&q.capmod == head {
 				full = true
 			}
 			if tail >= head {
@@ -273,7 +273,7 @@ func TestSortQueue(t *testing.T) {
 					}
 					atomic.AddUint32(&put, 1)
 					val++
-					if val >= jump / num * circle {
+					if val >= jump/num*circle {
 						break
 					}
 				}
@@ -306,7 +306,7 @@ func TestSortQueue(t *testing.T) {
 
 func TestQueuePutGet(t *testing.T) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	
+
 	cnt := 10000
 	sum := 0
 	start := time.Now()
@@ -327,7 +327,7 @@ func TestQueuePutGet(t *testing.T) {
 
 func TestQueueGeneral(t *testing.T) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	
+
 	var miss, Sum int
 	var Use time.Duration
 	for i := 1; i <= runtime.NumCPU()*4; i++ {
@@ -363,7 +363,7 @@ func TestQueuePutGoGet(t *testing.T) {
 		sum := i * cnt
 		start := time.Now()
 		miss = testQueuePutGoGet(t, i, cnt)
-		
+
 		end := time.Now()
 		use := end.Sub(start)
 		op := use / time.Duration(sum)
@@ -381,14 +381,14 @@ func TestQueuePutGetOrder(t *testing.T) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	grp := 1
 	cnt := 100
-	
+
 	testQueuePutGetOrder(t, grp, cnt)
 	t.Logf("Grp: %d, Times: %d", grp, cnt)
 }
 
 type safeMap struct {
 	data map[interface{}]int
-	mu sync.Mutex
+	mu   sync.Mutex
 }
 
 func newSafeMap(cap int) *safeMap {
@@ -476,7 +476,7 @@ func TestRbQueue(t *testing.T) {
 
 			if head == tail {
 				empty = true
-			} else if (tail + 1) & q.mask == head {
+			} else if (tail+1)&q.mask == head {
 				full = true
 			}
 			if tail >= head {
@@ -536,7 +536,7 @@ func TestRepeatRbQueue(t *testing.T) {
 					}
 					atomic.AddUint32(&put, 1)
 					val++
-					if val >= jump / num * circle {
+					if val >= jump/num*circle {
 						break
 					}
 				}
@@ -560,7 +560,7 @@ func TestRepeatRbQueue(t *testing.T) {
 					count.Incr(gval)
 					atomic.AddUint32(&get, 1)
 					val++
-					if val == jump / 4 {
+					if val == jump/4 {
 						break
 					}
 				}
@@ -604,7 +604,7 @@ func TestSortRbQueue(t *testing.T) {
 					}
 					atomic.AddUint32(&put, 1)
 					val++
-					if val >= jump / num * circle {
+					if val >= jump/num*circle {
 						break
 					}
 				}
@@ -637,7 +637,7 @@ func TestSortRbQueue(t *testing.T) {
 
 func TestRbQueuePutGet(t *testing.T) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	
+
 	cnt := 10000
 	sum := 0
 	start := time.Now()
@@ -658,7 +658,7 @@ func TestRbQueuePutGet(t *testing.T) {
 
 func TestRbQueueGeneral(t *testing.T) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	
+
 	var miss, Sum int
 	var Use time.Duration
 	for i := 1; i <= runtime.NumCPU()*4; i++ {
@@ -694,7 +694,7 @@ func TestRbQueuePutGoGet(t *testing.T) {
 		sum := i * cnt
 		start := time.Now()
 		miss = testRbQueuePutGoGet(t, i, cnt)
-		
+
 		end := time.Now()
 		use := end.Sub(start)
 		op := use / time.Duration(sum)
@@ -712,7 +712,7 @@ func TestRbQueuePutGetOrder(t *testing.T) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	grp := 1
 	cnt := 100
-	
+
 	testRbQueuePutGetOrder(t, grp, cnt)
 	t.Logf("Grp: %d, Times: %d", grp, cnt)
 }
@@ -740,7 +740,7 @@ func testQueuePutGet(t *testing.T, grp, cnt int) (
 	wg.Wait()
 	end := time.Now()
 	put = end.Sub(start)
-	
+
 	wg.Add(grp)
 	start = time.Now()
 	for i := 0; i < grp; i++ {
@@ -788,7 +788,7 @@ func testRbQueuePutGet(t *testing.T, grp, cnt int) (
 	wg.Wait()
 	end := time.Now()
 	put = end.Sub(start)
-	
+
 	wg.Add(grp)
 	start = time.Now()
 	for i := 0; i < grp; i++ {
@@ -814,11 +814,11 @@ func testRbQueuePutGet(t *testing.T, grp, cnt int) (
 }
 
 func testQueueGeneral(t *testing.T, grp, cnt int) int {
-	
+
 	var wg sync.WaitGroup
 	var idPut, idGet int32
 	var miss int32
-	
+
 	wg.Add(grp)
 	q := NewQueue(1024 * 1024)
 	for i := 0; i < grp; i++ {
@@ -834,7 +834,7 @@ func testQueueGeneral(t *testing.T, grp, cnt int) int {
 			}
 		}(i)
 	}
-	
+
 	wg.Add(grp)
 	for i := 0; i < grp; i++ {
 		go func(g int) {
@@ -859,11 +859,11 @@ func testQueueGeneral(t *testing.T, grp, cnt int) int {
 }
 
 func testRbQueueGeneral(t *testing.T, grp, cnt int) int {
-	
+
 	var wg sync.WaitGroup
 	var idPut, idGet int32
 	var miss int32
-	
+
 	wg.Add(grp)
 	q := NewRbQueue(1024 * 1024)
 	for i := 0; i < grp; i++ {
@@ -879,7 +879,7 @@ func testRbQueueGeneral(t *testing.T, grp, cnt int) int {
 			}
 		}(i)
 	}
-	
+
 	wg.Add(grp)
 	for i := 0; i < grp; i++ {
 		go func(g int) {
@@ -1062,4 +1062,3 @@ func testRbQueuePutGetOrder(t *testing.T, grp, cnt int) (
 	wg.Wait()
 	return
 }
-
