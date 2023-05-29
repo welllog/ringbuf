@@ -1,26 +1,24 @@
 package ringbuf
 
 import (
-	"runtime"
 	"sync/atomic"
 	"time"
 )
 
 type item struct {
-	value interface{}
-	tail  uint32
-	head  uint32
+	value    interface{}
+	position uint32
 }
 
 type Queue struct {
-	cap    uint32
-	capmod uint32
-	_      [56]byte
-	head   uint32
-	_      [60]byte
-	tail   uint32 // tail cannot catch up with head
-	_      [60]byte
-	data   []item
+	cap  uint32
+	mask uint32
+	_    [56]byte
+	head uint32
+	_    [60]byte
+	tail uint32
+	_    [60]byte
+	data []item
 }
 
 func NewQueue(size uint32) *Queue {
@@ -28,13 +26,12 @@ func NewQueue(size uint32) *Queue {
 		size = roundupPowOfTwo(size)
 	}
 	q := &Queue{
-		cap:    size,
-		capmod: size - 1,
-		data:   make([]item, size),
+		cap:  size,
+		mask: size - 1,
+		data: make([]item, size),
 	}
 	for i := range q.data {
-		q.data[i].tail = uint32(i)
-		q.data[i].head = uint32(i)
+		q.data[i].position = uint32(i)
 	}
 	return q
 }
@@ -44,89 +41,53 @@ func (q *Queue) Cap() uint32 {
 }
 
 func (q *Queue) Quantity() uint32 {
-	var tail, head uint32
-	//var quad uint64
-	//quad = atomic.LoadUint64((*uint64)(unsafe.Pointer(&rb.head)))
-	//head = (uint32)(quad & MaxUint32_64)
-	//tail = (uint32)(quad >> 32)
-	head = atomic.LoadUint32(&q.head)
-	tail = atomic.LoadUint32(&q.tail)
-	return tail - head
+	return atomic.LoadUint32(&q.tail) - atomic.LoadUint32(&q.head)
 }
 
 func (q *Queue) IsFull() bool {
-	var tail, head uint32
-	//var quad uint64
-	//quad = atomic.LoadUint64((*uint64)(unsafe.Pointer(&rb.head)))
-	//head = (uint32)(quad & MaxUint32_64)
-	//tail = (uint32)(quad >> 32)
-	head = atomic.LoadUint32(&q.head)
-	tail = atomic.LoadUint32(&q.tail)
-	return tail-head >= q.capmod
+	return atomic.LoadUint32(&q.tail)-atomic.LoadUint32(&q.head) == q.cap
 }
 
 func (q *Queue) IsEmpty() (b bool) {
-	var tail, head uint32
-	//var quad uint64
-	//quad = atomic.LoadUint64((*uint64)(unsafe.Pointer(&rb.head)))
-	//head = (uint32)(quad & MaxUint32_64)
-	//tail = (uint32)(quad >> 32)
-	head = atomic.LoadUint32(&q.head)
-	tail = atomic.LoadUint32(&q.tail)
-	return head == tail
+	return atomic.LoadUint32(&q.head) == atomic.LoadUint32(&q.tail)
 }
 
 func (q *Queue) Put(val interface{}) bool {
-	head := atomic.LoadUint32(&q.head)
-	tail := atomic.LoadUint32(&q.tail)
+	pos := atomic.LoadUint32(&q.tail)
 
-	if tail-head >= q.capmod {
+	holder := &q.data[pos&q.mask]
+	seq := atomic.LoadUint32(&holder.position)
+
+	if seq != pos {
 		return false
 	}
 
-	nt := tail & q.capmod
-	holder := &q.data[nt]
-
-	if !atomic.CompareAndSwapUint32(&holder.tail, tail, tail+q.cap) {
+	if !atomic.CompareAndSwapUint32(&q.tail, pos, pos+1) {
 		return false
 	}
 
-	for {
-		if atomic.LoadUint32(&holder.head) == tail {
-			holder.value = val
-			atomic.AddUint32(&q.tail, 1)
-			return true
-		}
-		runtime.Gosched()
-	}
+	holder.value = val
+	atomic.AddUint32(&holder.position, 1)
+	return true
 }
 
 func (q *Queue) Get() (interface{}, bool) {
-	tail := atomic.LoadUint32(&q.tail)
-	head := atomic.LoadUint32(&q.head)
+	pos := atomic.LoadUint32(&q.head)
 
-	if head == tail { // empty
-		return nil, false
-	} else if head > tail && (tail-head >= q.capmod) {
-		return nil, false
-	}
-
-	nh := head & q.capmod
-	holder := &q.data[nh]
-
-	if !atomic.CompareAndSwapUint32(&holder.head, head, head+q.cap) {
+	holder := &q.data[pos&q.mask]
+	seq := atomic.LoadUint32(&holder.position)
+	if seq != pos+1 {
 		return nil, false
 	}
 
-	for {
-		if atomic.LoadUint32(&holder.tail) == q.cap+head {
-			val := holder.value
-			holder.value = nil
-			atomic.AddUint32(&q.head, 1)
-			return val, true
-		}
-		runtime.Gosched()
+	if !atomic.CompareAndSwapUint32(&q.head, pos, pos+1) {
+		return nil, false
 	}
+
+	val := holder.value
+	holder.value = nil
+	atomic.AddUint32(&holder.position, q.mask)
+	return val, true
 }
 
 func (q *Queue) PutWait(val interface{}, delay ...time.Duration) bool {
@@ -156,9 +117,7 @@ func (q *Queue) PutWait(val interface{}, delay ...time.Duration) bool {
 			ticker.Stop()
 			return false
 		}
-
 	}
-
 }
 
 func (q *Queue) GetWait(delay ...time.Duration) (interface{}, bool) {
@@ -190,9 +149,7 @@ func (q *Queue) GetWait(delay ...time.Duration) (interface{}, bool) {
 			ticker.Stop()
 			return nil, false
 		}
-
 	}
-
 }
 
 func roundupPowOfTwo(x uint32) uint32 {
